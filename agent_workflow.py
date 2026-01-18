@@ -79,7 +79,9 @@ async def run_workflow():
         text=True
     )
     if result.returncode != 0:
-        print(f"❌ 生成提示词失败: {result.stderr}")
+        print(f"❌ 生成提示词失败:")
+        print(f"   stdout: {result.stdout}")
+        print(f"   stderr: {result.stderr}")
         return False
     print(f"   ✓ {result.stdout.strip()}")
     
@@ -91,9 +93,11 @@ async def run_workflow():
         text=True
     )
     if result.returncode != 0:
-        print(f"❌ 生成图片失败: {result.stderr}")
+        print(f"❌ 生成图片失败:")
+        print(f"   stdout: {result.stdout}")
+        print(f"   stderr: {result.stderr}")
         return False
-    print(f"   ✓ 图片生成完成")
+    print(f"   ✓ {result.stdout.strip()}")
     
     # 4. 上传到飞书
     print(f"☁️ 步骤 4: 上传到飞书...")
@@ -103,9 +107,11 @@ async def run_workflow():
         text=True
     )
     if result.returncode != 0:
-        print(f"❌ 上传失败: {result.stderr}")
+        print(f"❌ 上传失败:")
+        print(f"   stdout: {result.stdout}")
+        print(f"   stderr: {result.stderr}")
         return False
-    print(f"   ✓ 上传完成")
+    print(f"   ✓ {result.stdout.strip()}")
     
     # 5. 更新日志
     print(f"📊 步骤 5: 更新使用日志...")
@@ -115,9 +121,11 @@ async def run_workflow():
         text=True
     )
     if result.returncode != 0:
-        print(f"❌ 更新日志失败: {result.stderr}")
+        print(f"❌ 更新日志失败:")
+        print(f"   stdout: {result.stdout}")
+        print(f"   stderr: {result.stderr}")
         return False
-    print(f"   ✓ 日志已更新")
+    print(f"   ✓ {result.stdout.strip()}")
     
     print(f"\n✅ 笔记 {note_id} 生成完成!")
     return True
