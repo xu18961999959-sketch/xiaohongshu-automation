@@ -26,52 +26,74 @@ def generate_image(api_key: str, prompt: str, output_path: str, max_retries: int
         "Authorization": f"Bearer {api_key}"
     }
     
+    # 明确请求只返回图片，不返回文本
     payload = {
         "contents": [
             {
                 "role": "user",
                 "parts": [
                     {
-                        "text": prompt
+                        "text": f"Generate an image: {prompt}"
                     }
                 ]
             }
         ],
         "generationConfig": {
-            "responseModalities": ["image"],
-            "imageConfig": {
-                "aspectRatio": "3:4"  # 竖版社交媒体图片
-            }
+            "responseModalities": ["IMAGE"],
+            "responseMimeType": "image/png"
         }
     }
     
     for attempt in range(max_retries):
         try:
-            response = requests.post(endpoint, headers=headers, json=payload, timeout=120)
+            response = requests.post(endpoint, headers=headers, json=payload, timeout=180)
             
             if response.status_code == 200:
                 data = response.json()
                 
-                # 提取 base64 图片数据
+                # 提取 base64 图片数据 - 支持多种字段名格式
                 if "candidates" in data and data["candidates"]:
                     candidate = data["candidates"][0]
-                    if "content" in candidate and "parts" in candidate["content"]:
-                        for part in candidate["content"]["parts"]:
-                            if "inline_data" in part:
-                                image_data = part["inline_data"]["data"]
-                                image_bytes = base64.b64decode(image_data)
-                                
-                                with open(output_path, 'wb') as f:
-                                    f.write(image_bytes)
-                                
-                                print(f"  ✓ 保存图片: {output_path}")
-                                return True
+                    content = candidate.get("content", {})
+                    parts = content.get("parts", [])
+                    
+                    for part in parts:
+                        # 尝试多种可能的字段名 (camelCase 和 snake_case)
+                        inline_data = part.get("inlineData") or part.get("inline_data")
+                        
+                        if inline_data:
+                            # 获取图片数据
+                            image_data = inline_data.get("data") or inline_data.get("image_bytes")
+                            
+                            if image_data:
+                                try:
+                                    image_bytes = base64.b64decode(image_data)
+                                    
+                                    with open(output_path, 'wb') as f:
+                                        f.write(image_bytes)
+                                    
+                                    print(f"  ✓ 保存图片: {output_path}")
+                                    return True
+                                except Exception as decode_err:
+                                    print(f"  ✗ Base64 解码失败: {decode_err}")
+                    
+                    # 检查是否只返回了文本而不是图片
+                    for part in parts:
+                        if "text" in part:
+                            text_preview = part["text"][:100] if len(part.get("text", "")) > 100 else part.get("text", "")
+                            print(f"  ✗ API 返回文本而非图片: {text_preview}...")
+                        if "thoughtSignature" in part:
+                            print(f"  ✗ API 返回了 thoughtSignature，未生成图片")
                 
                 print(f"  ✗ 响应中未找到图片数据")
-                print(f"  响应: {json.dumps(data, ensure_ascii=False)[:200]}...")
+                # 打印响应结构用于调试
+                print(f"  响应结构: {json.dumps(list(data.keys()), ensure_ascii=False)}")
+                if "candidates" in data and data["candidates"]:
+                    parts_info = [list(p.keys()) for p in parts]
+                    print(f"  parts 结构: {parts_info}")
                 
             else:
-                error_msg = response.text[:200] if response.text else str(response.status_code)
+                error_msg = response.text[:300] if response.text else str(response.status_code)
                 print(f"  ✗ 尝试 {attempt + 1}/{max_retries} 失败: HTTP {response.status_code}")
                 print(f"     {error_msg}")
                 
@@ -79,7 +101,8 @@ def generate_image(api_key: str, prompt: str, output_path: str, max_retries: int
             print(f"  ✗ 尝试 {attempt + 1}/{max_retries} 失败: {e}")
         
         if attempt < max_retries - 1:
-            time.sleep(3)
+            print(f"  等待 5 秒后重试...")
+            time.sleep(5)
     
     return False
 
@@ -125,7 +148,7 @@ def main():
         
         # 添加延迟避免 API 限制
         if i < len(prompts):
-            time.sleep(2)
+            time.sleep(3)
     
     print(f"\n完成: 成功生成 {success_count}/{len(prompts)} 张图片")
     
