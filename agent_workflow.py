@@ -48,7 +48,7 @@ def validate_environment() -> bool:
         "FEISHU_APP_SECRET",
         "FEISHU_APP_TOKEN",
         "FEISHU_TABLE_ID",
-        "REPLICATE_API_TOKEN",
+        "GOOGLE_API_KEY",
     ]
     missing = [var for var in required if not os.environ.get(var)]
     if missing:

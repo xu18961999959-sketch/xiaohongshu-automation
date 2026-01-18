@@ -21,7 +21,7 @@ env:
   FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
   FEISHU_APP_TOKEN: ${{ secrets.FEISHU_APP_TOKEN }}
   FEISHU_TABLE_ID: ${{ secrets.FEISHU_TABLE_ID }}
-  REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+  GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
 jobs:
   generate-note:
@@ -40,7 +40,7 @@ jobs:
       
       - name: Install Python dependencies
         run: |
-          pip install requests replicate claude-agent-sdk
+          pip install requests google-generativeai claude-agent-sdk pillow
       
       - name: Run Note Generator Workflow
         id: generate

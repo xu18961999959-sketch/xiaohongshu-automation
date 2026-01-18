@@ -1,44 +1,53 @@
 #!/usr/bin/env python3
-"""使用 Replicate API 生成图片"""
+"""使用 Gemini API (Imagen) 生成图片"""
 import argparse
 import json
 import os
-import requests
 import time
+from pathlib import Path
 
 try:
-    import replicate
+    import google.generativeai as genai
+    from google.generativeai import types
 except ImportError:
-    print("请安装 replicate: pip install replicate")
+    print("请安装 google-generativeai: pip install google-generativeai")
     exit(1)
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'output')
+OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
-def generate_image(prompt, output_path, max_retries=3):
-    """使用 Replicate Flux 模型生成图片"""
+
+def generate_image(prompt: str, output_path: str, max_retries: int = 3) -> bool:
+    """使用 Gemini Imagen 模型生成图片"""
+    
+    # 配置 API
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        print("  ✗ 缺少 GOOGLE_API_KEY 环境变量")
+        return False
+    
+    genai.configure(api_key=api_key)
+    
     for attempt in range(max_retries):
         try:
-            output = replicate.run(
-                "black-forest-labs/flux-schnell",
-                input={
-                    "prompt": prompt,
-                    "aspect_ratio": "3:4",
-                    "num_outputs": 1,
-                    "output_format": "png"
-                }
+            # 使用 Imagen 3 模型生成图片
+            imagen = genai.ImageGenerationModel("imagen-3.0-generate-002")
+            
+            result = imagen.generate_images(
+                prompt=prompt,
+                number_of_images=1,
+                aspect_ratio="3:4",  # 竖版
+                safety_filter_level="block_only_high",
+                person_generation="allow_adult",
             )
             
-            # 下载图片
-            if output and len(output) > 0:
-                img_url = output[0]
-                response = requests.get(img_url)
-                response.raise_for_status()
-                
-                with open(output_path, 'wb') as f:
-                    f.write(response.content)
-                
+            if result.images:
+                # 保存第一张图片
+                image = result.images[0]
+                image._pil_image.save(output_path)
                 print(f"  ✓ 保存图片: {output_path}")
                 return True
+            else:
+                print(f"  ✗ 未生成图片")
                 
         except Exception as e:
             print(f"  ✗ 尝试 {attempt + 1}/{max_retries} 失败: {e}")
@@ -47,20 +56,21 @@ def generate_image(prompt, output_path, max_retries=3):
     
     return False
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--note_id', required=True, help='笔记 ID')
     args = parser.parse_args()
     
     note_id = args.note_id
-    prompts_file = os.path.join(OUTPUT_DIR, f"note{note_id}_prompts", "prompts.json")
-    images_dir = os.path.join(OUTPUT_DIR, f"note{note_id}_images")
+    prompts_file = OUTPUT_DIR / f"note{note_id}_prompts" / "prompts.json"
+    images_dir = OUTPUT_DIR / f"note{note_id}_images"
     
-    if not os.path.exists(prompts_file):
+    if not prompts_file.exists():
         print(f"错误: 找不到提示词文件 {prompts_file}")
         exit(1)
     
-    os.makedirs(images_dir, exist_ok=True)
+    images_dir.mkdir(parents=True, exist_ok=True)
     
     with open(prompts_file, 'r', encoding='utf-8') as f:
         prompts = json.load(f)
@@ -71,7 +81,7 @@ def main():
     for i, prompt_data in enumerate(prompts, 1):
         page = prompt_data.get('page', str(i))
         prompt = prompt_data.get('prompt', '')
-        output_path = os.path.join(images_dir, f"p{page}.png")
+        output_path = str(images_dir / f"p{page}.png")
         
         print(f"[{i}/{len(prompts)}] 生成 P{page}...")
         
@@ -79,11 +89,16 @@ def main():
             success_count += 1
         else:
             print(f"  ✗ 跳过 P{page}")
+        
+        # 添加延迟避免 API 限制
+        if i < len(prompts):
+            time.sleep(1)
     
     print(f"\n完成: 成功生成 {success_count}/{len(prompts)} 张图片")
     
     if success_count < len(prompts):
         exit(1)
+
 
 if __name__ == '__main__':
     main()
