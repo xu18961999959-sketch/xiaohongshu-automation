@@ -1,0 +1,81 @@
+name: Xiaohongshu Note Generator
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # 每天 UTC 12:00 = 北京时间 20:00
+  workflow_dispatch:
+    inputs:
+      note_id:
+        description: '指定笔记 ID（留空则自动选择下一篇）'
+        required: false
+        type: string
+      use_claude:
+        description: '使用 Claude Agent 模式'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+  FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+  FEISHU_APP_TOKEN: ${{ secrets.FEISHU_APP_TOKEN }}
+  FEISHU_TABLE_ID: ${{ secrets.FEISHU_TABLE_ID }}
+  REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+
+jobs:
+  generate-note:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Python dependencies
+        run: |
+          pip install requests replicate claude-agent-sdk
+      
+      - name: Run Note Generator Workflow
+        id: generate
+        run: |
+          if [ -n "${{ github.event.inputs.note_id }}" ]; then
+            # 手动指定笔记 ID 时，使用原有脚本流程
+            NOTE_ID="${{ github.event.inputs.note_id }}"
+            echo "note_id=$NOTE_ID" >> $GITHUB_OUTPUT
+            python scripts/generate_prompts.py --note_id $NOTE_ID
+            python scripts/generate_images.py --note_id $NOTE_ID
+            python scripts/upload_to_feishu.py --note_id $NOTE_ID
+            python scripts/update_log.py --note_id $NOTE_ID
+          else
+            # 自动选择时，使用 agent_workflow.py
+            python agent_workflow.py
+            # 读取最新使用的笔记 ID
+            NOTE_ID=$(python -c "import json; print(json.load(open('data/usage_log.json'))['used_notes'][-1])")
+            echo "note_id=$NOTE_ID" >> $GITHUB_OUTPUT
+          fi
+        env:
+          USE_CLAUDE_AGENT: ${{ github.event.inputs.use_claude }}
+      
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/usage_log.json
+          git add "output/" || true
+          git diff --staged --quiet || git commit -m "Auto: 完成笔记 ${{ steps.generate.outputs.note_id }} 生成"
+          git push
+      
+      - name: Summary
+        run: |
+          echo "## ✅ 笔记生成完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **笔记 ID**: ${{ steps.generate.outputs.note_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **执行时间**: $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Claude Agent**: ${{ github.event.inputs.use_claude || 'false' }}" >> $GITHUB_STEP_SUMMARY
