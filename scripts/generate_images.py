@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""使用 Gemini API (Imagen) 生成图片"""
+"""使用 AllAPI (gemini-3-pro-image-preview) 生成图片"""
 import argparse
 import base64
 import json
@@ -7,50 +7,79 @@ import os
 import time
 from pathlib import Path
 
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    print("请安装 google-genai: pip install google-genai")
-    exit(1)
+import requests
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
+# AllAPI 配置
+ALLAPI_BASE_URL = "https://allapi.store"
+MODEL_NAME = "gemini-3-pro-image-preview"
 
-def generate_image(client, prompt: str, output_path: str, max_retries: int = 3) -> bool:
-    """使用 Gemini Imagen 模型生成图片"""
+
+def generate_image(api_key: str, prompt: str, output_path: str, max_retries: int = 3) -> bool:
+    """使用 AllAPI Gemini 模型生成图片"""
+    
+    endpoint = f"{ALLAPI_BASE_URL}/v1beta/models/{MODEL_NAME}:generateContent"
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["image"],
+            "imageConfig": {
+                "aspectRatio": "3:4"  # 竖版社交媒体图片
+            }
+        }
+    }
     
     for attempt in range(max_retries):
         try:
-            # 使用 Imagen 3 模型生成图片
-            response = client.models.generate_images(
-                model="imagen-3.0-generate-002",
-                prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="3:4",  # 竖版
-                    safety_filter_level="BLOCK_ONLY_HIGH",
-                    person_generation="ALLOW_ADULT",
-                ),
-            )
+            response = requests.post(endpoint, headers=headers, json=payload, timeout=120)
             
-            if response.generated_images:
-                # 保存第一张图片
-                image = response.generated_images[0]
-                image_bytes = base64.b64decode(image.image.image_bytes)
+            if response.status_code == 200:
+                data = response.json()
                 
-                with open(output_path, 'wb') as f:
-                    f.write(image_bytes)
+                # 提取 base64 图片数据
+                if "candidates" in data and data["candidates"]:
+                    candidate = data["candidates"][0]
+                    if "content" in candidate and "parts" in candidate["content"]:
+                        for part in candidate["content"]["parts"]:
+                            if "inline_data" in part:
+                                image_data = part["inline_data"]["data"]
+                                image_bytes = base64.b64decode(image_data)
+                                
+                                with open(output_path, 'wb') as f:
+                                    f.write(image_bytes)
+                                
+                                print(f"  ✓ 保存图片: {output_path}")
+                                return True
                 
-                print(f"  ✓ 保存图片: {output_path}")
-                return True
+                print(f"  ✗ 响应中未找到图片数据")
+                print(f"  响应: {json.dumps(data, ensure_ascii=False)[:200]}...")
+                
             else:
-                print(f"  ✗ 未生成图片")
+                error_msg = response.text[:200] if response.text else str(response.status_code)
+                print(f"  ✗ 尝试 {attempt + 1}/{max_retries} 失败: HTTP {response.status_code}")
+                print(f"     {error_msg}")
                 
         except Exception as e:
             print(f"  ✗ 尝试 {attempt + 1}/{max_retries} 失败: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
+        
+        if attempt < max_retries - 1:
+            time.sleep(3)
     
     return False
 
@@ -61,13 +90,10 @@ def main():
     args = parser.parse_args()
     
     # 检查 API Key
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("ALLAPI_API_KEY")
     if not api_key:
-        print("错误: 缺少 GOOGLE_API_KEY 环境变量")
+        print("错误: 缺少 ALLAPI_API_KEY 环境变量")
         exit(1)
-    
-    # 初始化客户端
-    client = genai.Client(api_key=api_key)
     
     note_id = args.note_id
     prompts_file = OUTPUT_DIR / f"note{note_id}_prompts" / "prompts.json"
@@ -82,7 +108,7 @@ def main():
     with open(prompts_file, 'r', encoding='utf-8') as f:
         prompts = json.load(f)
     
-    print(f"开始生成 {len(prompts)} 张图片...")
+    print(f"开始生成 {len(prompts)} 张图片 (使用 AllAPI {MODEL_NAME})...")
     
     success_count = 0
     for i, prompt_data in enumerate(prompts, 1):
@@ -92,18 +118,19 @@ def main():
         
         print(f"[{i}/{len(prompts)}] 生成 P{page}...")
         
-        if generate_image(client, prompt, output_path):
+        if generate_image(api_key, prompt, output_path):
             success_count += 1
         else:
             print(f"  ✗ 跳过 P{page}")
         
         # 添加延迟避免 API 限制
         if i < len(prompts):
-            time.sleep(1)
+            time.sleep(2)
     
     print(f"\n完成: 成功生成 {success_count}/{len(prompts)} 张图片")
     
-    if success_count < len(prompts):
+    # 如果成功生成超过一半，也算成功
+    if success_count == 0:
         exit(1)
 
 

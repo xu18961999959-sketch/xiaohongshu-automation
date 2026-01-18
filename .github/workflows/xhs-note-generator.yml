@@ -21,7 +21,7 @@ env:
   FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
   FEISHU_APP_TOKEN: ${{ secrets.FEISHU_APP_TOKEN }}
   FEISHU_TABLE_ID: ${{ secrets.FEISHU_TABLE_ID }}
-  GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+  ALLAPI_API_KEY: ${{ secrets.ALLAPI_API_KEY }}
 
 jobs:
   generate-note:
