@@ -1,9 +1,10 @@
 {
-    "used_notes": [
-        "004",
-        "005",
-        "006"
-    ],
-    "last_updated": "2026-01-18T21:57:00+08:00",
-    "total_available": 100
+  "used_notes": [
+    "001",
+    "004",
+    "005",
+    "006"
+  ],
+  "last_updated": "2026-01-18T22:41:12.205259",
+  "total_available": 100
 }
