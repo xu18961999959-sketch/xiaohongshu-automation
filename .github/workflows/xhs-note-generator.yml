@@ -40,7 +40,7 @@ jobs:
       
       - name: Install Python dependencies
         run: |
-          pip install requests google-generativeai claude-agent-sdk pillow
+          pip install requests google-genai claude-agent-sdk
       
       - name: Run Note Generator Workflow
         id: generate

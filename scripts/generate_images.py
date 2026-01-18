@@ -1,49 +1,47 @@
 #!/usr/bin/env python3
 """使用 Gemini API (Imagen) 生成图片"""
 import argparse
+import base64
 import json
 import os
 import time
 from pathlib import Path
 
 try:
-    import google.generativeai as genai
-    from google.generativeai import types
+    from google import genai
+    from google.genai import types
 except ImportError:
-    print("请安装 google-generativeai: pip install google-generativeai")
+    print("请安装 google-genai: pip install google-genai")
     exit(1)
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 
-def generate_image(prompt: str, output_path: str, max_retries: int = 3) -> bool:
+def generate_image(client, prompt: str, output_path: str, max_retries: int = 3) -> bool:
     """使用 Gemini Imagen 模型生成图片"""
-    
-    # 配置 API
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        print("  ✗ 缺少 GOOGLE_API_KEY 环境变量")
-        return False
-    
-    genai.configure(api_key=api_key)
     
     for attempt in range(max_retries):
         try:
             # 使用 Imagen 3 模型生成图片
-            imagen = genai.ImageGenerationModel("imagen-3.0-generate-002")
-            
-            result = imagen.generate_images(
+            response = client.models.generate_images(
+                model="imagen-3.0-generate-002",
                 prompt=prompt,
-                number_of_images=1,
-                aspect_ratio="3:4",  # 竖版
-                safety_filter_level="block_only_high",
-                person_generation="allow_adult",
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    aspect_ratio="3:4",  # 竖版
+                    safety_filter_level="BLOCK_ONLY_HIGH",
+                    person_generation="ALLOW_ADULT",
+                ),
             )
             
-            if result.images:
+            if response.generated_images:
                 # 保存第一张图片
-                image = result.images[0]
-                image._pil_image.save(output_path)
+                image = response.generated_images[0]
+                image_bytes = base64.b64decode(image.image.image_bytes)
+                
+                with open(output_path, 'wb') as f:
+                    f.write(image_bytes)
+                
                 print(f"  ✓ 保存图片: {output_path}")
                 return True
             else:
@@ -61,6 +59,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--note_id', required=True, help='笔记 ID')
     args = parser.parse_args()
+    
+    # 检查 API Key
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        print("错误: 缺少 GOOGLE_API_KEY 环境变量")
+        exit(1)
+    
+    # 初始化客户端
+    client = genai.Client(api_key=api_key)
     
     note_id = args.note_id
     prompts_file = OUTPUT_DIR / f"note{note_id}_prompts" / "prompts.json"
@@ -85,7 +92,7 @@ def main():
         
         print(f"[{i}/{len(prompts)}] 生成 P{page}...")
         
-        if generate_image(prompt, output_path):
+        if generate_image(client, prompt, output_path):
             success_count += 1
         else:
             print(f"  ✗ 跳过 P{page}")
